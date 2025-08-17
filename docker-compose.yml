@@ -1,0 +1,71 @@
+version: '3.7'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=meetings
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    command: postgres -c 'max_connections=200'
+
+  openvidu:
+    image: openvidu/openvidu-server-kms:2.22.0
+    environment:
+      - OPENVIDU_SECRET=MY_SECRET
+      - OPENVIDU_PUBLICURL=https://localhost:4443
+      - OPENVIDU_RECORDING=true
+      - OPENVIDU_RECORDING_PATH=/opt/openvidu/recordings
+      - OPENVIDU_RECORDING_PUBLIC_ACCESS=true
+      - OPENVIDU_RECORDING_NOTIFICATION=publisher_and_moderator
+      - OPENVIDU_RECORDING_AUTOSTOP_TIMEOUT=120
+      - OPENVIDU_RECORDING_COMPOSED_URL=""
+      - OPENVIDU_STREAMS_VIDEO_MAX_RECV_BANDWIDTH=1000
+      - OPENVIDU_STREAMS_VIDEO_MIN_RECV_BANDWIDTH=300
+      - OPENVIDU_STREAMS_VIDEO_MAX_SEND_BANDWIDTH=1000
+      - OPENVIDU_STREAMS_VIDEO_MIN_SEND_BANDWIDTH=300
+    ports:
+      - "4443:4443"
+    volumes:
+      - ./recordings:/opt/openvidu/recordings
+    restart: unless-stopped
+
+  backend:
+    build: ./server
+    working_dir: /app
+    volumes:
+      - ./server:/app
+    environment:
+      - OPENVIDU_URL=https://openvidu:4443
+      - OPENVIDU_SECRET=MY_SECRET
+      - PORT=5000
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/meetings
+    ports:
+      - "5000:5000"
+    depends_on:
+      - openvidu
+      - postgres
+    restart: unless-stopped
+
+  # frontend:
+  #   build: ./client
+  #   working_dir: /app
+  #   volumes:
+  #     - ./client:/app
+  #   environment:
+  #     - REACT_APP_SERVER_URL=http://localhost:5000
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - backend
+  #   restart: unless-stopped
+
+volumes:
+  postgres_data:

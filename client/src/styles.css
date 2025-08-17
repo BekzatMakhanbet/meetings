@@ -1,0 +1,448 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  background: #1a1a1a;
+  color: #ffffff;
+}
+
+/* Loading Styles */
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: #1a1a1a;
+  color: white;
+  font-size: 1.2rem;
+}
+
+.app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  background: linear-gradient(135deg, #6b73ff 0%, #000dff 100%);
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.app-header h1 {
+  margin: 0;
+  color: white;
+  font-size: 1.5rem;
+}
+
+.btn {
+  background: #6b73ff;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.btn:hover {
+  background: #5a64ff;
+}
+
+.btn.secondary {
+  background: #64748b;
+}
+
+.btn.secondary:hover {
+  background: #475569;
+}
+
+/* Auth Styles */
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.auth-form {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 400px;
+  color: #333;
+}
+
+.auth-form h2 {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  color: #333;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: #6b73ff;
+}
+
+.error {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 0.75rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: #6b73ff;
+  cursor: pointer;
+  text-decoration: underline;
+  margin-left: 0.5rem;
+}
+
+/* Rooms Styles */
+.rooms-container {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto;
+}
+
+.rooms-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.rooms-header h3 {
+  margin: 0;
+  font-size: 1.8rem;
+}
+
+.rooms-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.room-card {
+  background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.room-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+.room-card h4 {
+  margin-top: 0;
+  color: #f7fafc;
+  font-size: 1.2rem;
+}
+
+.room-card p {
+  color: #a0aec0;
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+/* Meeting Styles */
+.meeting-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.meeting-header {
+  background: #2d3748;
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #4a5568;
+}
+
+.meeting-header h3 {
+  margin: 0;
+  color: white;
+}
+
+.meeting-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.control-btn {
+  background: #4a5568;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.2s;
+}
+
+.control-btn:hover {
+  background: #2d3748;
+}
+
+.control-btn.active {
+  background: #38a169;
+  color: white;
+}
+
+.control-btn.inactive {
+  background: #e53e3e;
+  color: white;
+}
+
+.control-btn.record {
+  background: #dc2626;
+}
+
+.control-btn.record:hover {
+  background: #b91c1c;
+}
+
+.control-btn.record.active {
+  background: #ef4444;
+  animation: pulse 2s infinite;
+}
+
+.control-btn.leave {
+  background: #dc2626;
+}
+
+.control-btn.leave:hover {
+  background: #b91c1c;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.meeting-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.video-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #111827;
+}
+
+.main-video {
+  flex: 1;
+  padding: 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.video-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+  height: 100%;
+  max-height: 600px;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+.local-video, .remote-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-label {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.media-status {
+  font-size: 0.7rem;
+  margin-top: 2px;
+  opacity: 0.8;
+}
+
+.remote-videos {
+  display: flex;
+  gap: 1rem;
+  padding: 0 1rem 1rem;
+  overflow-x: auto;
+}
+
+.participant {
+  flex-shrink: 0;
+}
+
+.participant .video-wrapper {
+  width: 200px;
+  height: 150px;
+}
+
+/* Chat Styles */
+.chat-panel {
+  width: 350px;
+  background: #1f2937;
+  border-left: 1px solid #374151;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-header {
+  padding: 1rem;
+  border-bottom: 1px solid #374151;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chat-header h4 {
+  margin: 0;
+  color: white;
+}
+
+.chat-header button {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+.chat-messages {
+  flex: 1;
+  padding: 1rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.chat-message {
+  background: #374151;
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.chat-message strong {
+  color: #60a5fa;
+}
+
+.chat-input {
+  padding: 1rem;
+  border-top: 1px solid #374151;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.chat-input input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  background: #374151;
+  color: white;
+}
+
+.chat-input input:focus {
+  outline: none;
+  border-color: #6b73ff;
+}
+
+.chat-input button {
+  background: #6b73ff;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.chat-input button:hover {
+  background: #5a64ff;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .meeting-content {
+    flex-direction: column;
+  }
+  
+  .chat-panel {
+    width: 100%;
+    height: 300px;
+  }
+  
+  .remote-videos {
+    flex-direction: column;
+  }
+  
+  .participant .video-wrapper {
+    width: 100%;
+    height: 120px;
+  }
+  
+  .rooms-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .meeting-controls {
+    flex-wrap: wrap;
+  }
+  
+  .control-btn {
+    font-size: 0.7rem;
+    padding: 0.4rem 0.6rem;
+  }
+}
