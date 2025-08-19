@@ -273,6 +273,11 @@ function VideoMeeting({ room, token, user, onLeave, onAuthError }) {
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [recordedChunks, setRecordedChunks] = useState([]);
   
+  // Participants state
+  const [participants, setParticipants] = useState([]);
+  const [showParticipants, setShowParticipants] = useState(false);
+  const [userRole, setUserRole] = useState('participant');
+  
   const localVideoRef = useRef(null);
   const chatRef = useRef(null);
 
@@ -281,13 +286,58 @@ function VideoMeeting({ room, token, user, onLeave, onAuthError }) {
     
     // Initialize socket
     socketRef.current = io(SERVER_URL);
+    
+    // Socket event handlers
     socketRef.current.on('new-message', (message) => {
       setMessages(prev => [...prev, message]);
       scrollToBottom();
     });
 
+    socketRef.current.on('participants-list', (participantsList) => {
+      setParticipants(participantsList);
+      // Check user role
+      const currentUserParticipant = participantsList.find(p => p.user_id === user.id);
+      if (currentUserParticipant) {
+        setUserRole(currentUserParticipant.role);
+      }
+    });
+
+    socketRef.current.on('participant-joined', (participant) => {
+      console.log('Participant joined:', participant);
+      loadParticipants();
+    });
+
+    socketRef.current.on('participant-left', (data) => {
+      console.log('Participant left:', data);
+      setParticipants(prev => prev.filter(p => p.user_id !== data.userId));
+    });
+
+    socketRef.current.on('participant-muted', (data) => {
+      console.log('Participant muted:', data);
+      setParticipants(prev => prev.map(p => 
+        p.user_id === data.userId 
+          ? { ...p, is_muted: data.isMuted }
+          : p
+      ));
+      
+      if (data.userId === user.id) {
+        alert(data.isMuted 
+          ? `Вы были заглушены администратором ${data.mutedBy}` 
+          : `Ваш микрофон был включен администратором ${data.mutedBy}`);
+      }
+    });
+
+    socketRef.current.on('message-blocked', (data) => {
+      alert(data.reason);
+    });
+
+    socketRef.current.on('error', (data) => {
+      alert(data.message);
+    });
+
     join();
     loadMessages();
+    loadParticipants();
 
     return () => {
       if (sessionRef.current) sessionRef.current.disconnect();
@@ -310,6 +360,23 @@ function VideoMeeting({ room, token, user, onLeave, onAuthError }) {
       scrollToBottom();
     } catch (err) {
       console.error('Ошибка загрузки сообщений:', err);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        onAuthError();
+      }
+    }
+  };
+
+  const loadParticipants = async () => {
+    try {
+      const response = await axios.get(`${SERVER_URL}/api/rooms/${room.session_id}/participants`);
+      setParticipants(response.data);
+      // Check user role
+      const currentUserParticipant = response.data.find(p => p.user_id === user.id);
+      if (currentUserParticipant) {
+        setUserRole(currentUserParticipant.role);
+      }
+    } catch (err) {
+      console.error('Ошибка загрузки участников:', err);
       if (err.response?.status === 401 || err.response?.status === 403) {
         onAuthError();
       }
@@ -357,6 +424,12 @@ function VideoMeeting({ room, token, user, onLeave, onAuthError }) {
       });
 
       await session.connect(sessionToken);
+
+      // Join socket room with token
+      socketRef.current.emit("join-room", {
+        sessionId: room.session_id,
+        token
+      });
 
       const publisher = OV.current.initPublisher(undefined, {
         publishAudio: isMicOn,
@@ -521,10 +594,29 @@ function VideoMeeting({ room, token, user, onLeave, onAuthError }) {
     socketRef.current.emit('send-message', {
       sessionId: room.session_id,
       message: newMessage,
-      token: localStorage.getItem('token')
+      token: token  // Use the token prop instead of localStorage
     });
 
     setNewMessage('');
+  };
+
+  const toggleParticipantMute = (participantUserId, currentMutedStatus) => {
+    if (userRole !== 'admin') {
+      alert('Только администраторы могут управлять участниками');
+      return;
+    }
+
+    const participant = participants.find(p => p.user_id === participantUserId);
+    const action = currentMutedStatus ? 'включить микрофон' : 'заглушить';
+    
+    if (window.confirm(`Вы уверены, что хотите ${action} у ${participant?.username}?`)) {
+      socketRef.current.emit('mute-participant', {
+        sessionId: room.session_id,
+        targetUserId: participantUserId,
+        isMuted: !currentMutedStatus,
+        token: token
+      });
+    }
   };
 
   // Local recording functions
@@ -763,6 +855,9 @@ function VideoMeeting({ room, token, user, onLeave, onAuthError }) {
           <button className="control-btn" onClick={() => setShowChat(!showChat)}>
             💬 {showChat ? 'Скрыть чат' : 'Показать чат'}
           </button>
+          <button className="control-btn" onClick={() => setShowParticipants(!showParticipants)}>
+            👥 {showParticipants ? 'Скрыть участников' : 'Участники'} ({participants.length})
+          </button>
           <button className="control-btn leave" onClick={leave}>
             📞 Выйти
           </button>
@@ -797,6 +892,44 @@ function VideoMeeting({ room, token, user, onLeave, onAuthError }) {
             </div>
           )}
         </div>
+
+        {showParticipants && (
+          <div className="participants-panel">
+            <div className="participants-header">
+              <h4>Участники ({participants.length})</h4>
+              <button onClick={() => setShowParticipants(false)}>✕</button>
+            </div>
+            
+            <div className="participants-list">
+              {participants.map((participant) => (
+                <div key={participant.user_id} className="participant-item">
+                  <div className="participant-info">
+                    <div className="participant-name">
+                      {participant.username}
+                      {participant.role === 'admin' && (
+                        <span className="admin-badge">👑 Админ</span>
+                      )}
+                    </div>
+                    <div className="participant-status">
+                      {participant.is_muted ? '🎤❌ Заглушен' : '🎤 Активен'}
+                    </div>
+                  </div>
+                  
+                  {userRole === 'admin' && participant.user_id !== user.id && (
+                    <div className="participant-actions">
+                      <button 
+                        className={`action-btn ${participant.is_muted ? 'unmute' : 'mute'}`}
+                        onClick={() => toggleParticipantMute(participant.user_id, participant.is_muted)}
+                      >
+                        {participant.is_muted ? '🔊 Включить' : '🔇 Заглушить'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {showChat && (
           <div className="chat-panel">
