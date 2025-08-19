@@ -20,7 +20,7 @@ services:
     environment:
       - OPENVIDU_SECRET=MY_SECRET
       - DOMAIN_OR_PUBLIC_IP=openvidu.koktem2.kz
-      - OPENVIDU_HTTPS_PORT=443
+      - HTTPS_PORT=443
       - OPENVIDU_CERTIFICATE_TYPE=selfsigned
       - OPENVIDU_RECORDING=false
       - OPENVIDU_STREAMS_VIDEO_MAX_RECV_BANDWIDTH=1000
