@@ -27,8 +27,9 @@ services:
       - OPENVIDU_STREAMS_VIDEO_MIN_RECV_BANDWIDTH=300
       - OPENVIDU_STREAMS_VIDEO_MAX_SEND_BANDWIDTH=1000
       - OPENVIDU_STREAMS_VIDEO_MIN_SEND_BANDWIDTH=300
-      # Google STUN серверы в правильном формате (массив строк)
-      - OPENVIDU_WEBRTC_ICE_SERVERS=["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302","stun:stun2.l.google.com:19302","stun:stun3.l.google.com:19302","stun:stun4.l.google.com:19302"]
+      # Kurento STUN серверы (работает лучше чем OPENVIDU_WEBRTC_ICE_SERVERS)
+      - KMS_STUN_IP=stun.l.google.com
+      - KMS_STUN_PORT=19302
     ports:
       - "4443:443"
     volumes:
