@@ -1,6 +1,26 @@
 version: '3.7'
 
 services:
+  coturn:
+    image: coturn/coturn:4.5.2
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "65435-65535:65435-65535/udp"
+    command:
+      - turnserver
+      - --listening-port=3478
+      - --realm=meetings.koktem2.kz
+      - --user=turnuser:turnpass
+      - --lt-cred-mech
+      - --fingerprint
+      - --no-multicast-peers
+      - --no-cli
+      - --no-tlsv1
+      - --no-tlsv1_1
+      - --external-ip=$$(detect-external-ip)
+    restart: unless-stopped
+
   postgres:
     image: postgres:15
     environment:
@@ -27,9 +47,13 @@ services:
       - OPENVIDU_STREAMS_VIDEO_MIN_RECV_BANDWIDTH=300
       - OPENVIDU_STREAMS_VIDEO_MAX_SEND_BANDWIDTH=1000
       - OPENVIDU_STREAMS_VIDEO_MIN_SEND_BANDWIDTH=300
-      # Kurento STUN серверы (работает лучше чем OPENVIDU_WEBRTC_ICE_SERVERS)
-      - KMS_STUN_IP=stun.l.google.com
-      - KMS_STUN_PORT=19302
+      # COTURN TURN server configuration
+      - COTURN_REDIS_IP=coturn
+      - COTURN_REDIS_PASSWORD=turnpass
+      - COTURN_IP=meetings.koktem2.kz
+      - COTURN_PORT=3478
+    depends_on:
+      - coturn
     ports:
       - "4443:443"
     volumes:
