@@ -19,7 +19,7 @@ services:
     image: openvidu/openvidu-server-kms:2.22.0
     environment:
       - OPENVIDU_SECRET=MY_SECRET
-      - OPENVIDU_PUBLICURL=https://openvidu.koktem2.kz
+      - DOMAIN_OR_PUBLIC_IP=openvidu.koktem2.kz
       - OPENVIDU_HTTPS_PORT=4443
       - OPENVIDU_CERTIFICATE_TYPE=selfsigned
       - OPENVIDU_RECORDING=false
