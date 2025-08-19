@@ -28,7 +28,7 @@ services:
       - OPENVIDU_STREAMS_VIDEO_MAX_SEND_BANDWIDTH=1000
       - OPENVIDU_STREAMS_VIDEO_MIN_SEND_BANDWIDTH=300
     ports:
-      - "4443:4443"
+      - "4443:443"
     volumes:
       - ./recordings:/opt/openvidu/recordings
       - /var/run/docker.sock:/var/run/docker.sock
