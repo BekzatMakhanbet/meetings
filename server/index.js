@@ -104,6 +104,19 @@ async function initDatabase() {
       )
     `);
 
+    // New table for room participants with roles and mute status
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS room_participants (
+        id SERIAL PRIMARY KEY,
+        room_id INTEGER REFERENCES rooms(id),
+        user_id INTEGER REFERENCES users(id),
+        role VARCHAR(50) DEFAULT 'participant', -- 'admin' or 'participant'
+        is_muted BOOLEAN DEFAULT false,
+        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(room_id, user_id)
+      )
+    `);
+
     console.log("Database initialized successfully");
     return true;
   } catch (err) {
@@ -431,13 +444,146 @@ app.get("/api/rooms/:sessionId/messages", authenticateToken, async (req, res) =>
   }
 });
 
+// Get room participants
+app.get("/api/rooms/:sessionId/participants", authenticateToken, async (req, res) => {
+  const { sessionId } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT rp.*, u.username, u.email, r.name as room_name, r.created_by as room_creator_id
+      FROM room_participants rp
+      JOIN rooms r ON rp.room_id = r.id
+      JOIN users u ON rp.user_id = u.id
+      WHERE r.session_id = $1
+      ORDER BY rp.joined_at ASC
+    `, [sessionId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Ошибка получения участников" });
+  }
+});
+
+// Join room as participant
+app.post("/api/rooms/:sessionId/join", authenticateToken, async (req, res) => {
+  const { sessionId } = req.params;
+  const userId = req.user.userId;
+  
+  try {
+    // Get room info
+    const roomResult = await pool.query("SELECT * FROM rooms WHERE session_id = $1", [sessionId]);
+    if (roomResult.rows.length === 0) {
+      return res.status(404).json({ error: "Комната не найдена" });
+    }
+    
+    const room = roomResult.rows[0];
+    
+    // Determine role: admin if creator, participant otherwise
+    const role = room.created_by === userId ? 'admin' : 'participant';
+    
+    // Add/update participant
+    await pool.query(`
+      INSERT INTO room_participants (room_id, user_id, role, is_muted)
+      VALUES ($1, $2, $3, false)
+      ON CONFLICT (room_id, user_id) 
+      DO UPDATE SET joined_at = CURRENT_TIMESTAMP
+    `, [room.id, userId, role]);
+    
+    res.json({ success: true, role });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Ошибка присоединения к комнате" });
+  }
+});
+
+// Mute/unmute participant (admin only)
+app.post("/api/rooms/:sessionId/mute", authenticateToken, async (req, res) => {
+  const { sessionId } = req.params;
+  const { targetUserId, isMuted } = req.body;
+  const adminUserId = req.user.userId;
+  
+  try {
+    // Get room info
+    const roomResult = await pool.query("SELECT * FROM rooms WHERE session_id = $1", [sessionId]);
+    if (roomResult.rows.length === 0) {
+      return res.status(404).json({ error: "Комната не найдена" });
+    }
+    
+    const room = roomResult.rows[0];
+    
+    // Check if user is admin
+    const adminCheck = await pool.query(`
+      SELECT role FROM room_participants 
+      WHERE room_id = $1 AND user_id = $2
+    `, [room.id, adminUserId]);
+    
+    if (adminCheck.rows.length === 0 || adminCheck.rows[0].role !== 'admin') {
+      return res.status(403).json({ error: "Недостаточно прав" });
+    }
+    
+    // Update mute status
+    await pool.query(`
+      UPDATE room_participants 
+      SET is_muted = $1
+      WHERE room_id = $2 AND user_id = $3
+    `, [isMuted, room.id, targetUserId]);
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Ошибка изменения статуса мьюта" });
+  }
+});
+
 // Socket.IO for chat
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  socket.on("join-room", (sessionId) => {
-    socket.join(sessionId);
-    console.log(`User ${socket.id} joined room ${sessionId}`);
+  socket.on("join-room", async (data) => {
+    const { sessionId, token } = data;
+    try {
+      // Verify token
+      const decoded = jwt.verify(token, JWT_SECRET);
+      
+      socket.join(sessionId);
+      socket.userId = decoded.userId;
+      socket.sessionId = sessionId;
+      
+      console.log(`User ${decoded.username} (${socket.id}) joined room ${sessionId}`);
+      
+      // Add user to participants if not already added
+      const roomResult = await pool.query("SELECT * FROM rooms WHERE session_id = $1", [sessionId]);
+      if (roomResult.rows.length > 0) {
+        const room = roomResult.rows[0];
+        const role = room.created_by === decoded.userId ? 'admin' : 'participant';
+        
+        await pool.query(`
+          INSERT INTO room_participants (room_id, user_id, role, is_muted)
+          VALUES ($1, $2, $3, false)
+          ON CONFLICT (room_id, user_id) 
+          DO UPDATE SET joined_at = CURRENT_TIMESTAMP
+        `, [room.id, decoded.userId, role]);
+      }
+      
+      // Broadcast participant joined
+      socket.to(sessionId).emit("participant-joined", {
+        userId: decoded.userId,
+        username: decoded.username
+      });
+      
+      // Send current participants list to the newly joined user
+      const participantsResult = await pool.query(`
+        SELECT rp.*, u.username, u.email
+        FROM room_participants rp
+        JOIN rooms r ON rp.room_id = r.id
+        JOIN users u ON rp.user_id = u.id
+        WHERE r.session_id = $1
+      `, [sessionId]);
+      
+      socket.emit("participants-list", participantsResult.rows);
+      
+    } catch (err) {
+      console.error("Join room error:", err);
+    }
   });
 
   socket.on("send-message", async (data) => {
@@ -446,9 +592,19 @@ io.on("connection", (socket) => {
       // Verify token
       const decoded = jwt.verify(token, JWT_SECRET);
       
-      // Get room
+      // Check if user is muted
       const roomResult = await pool.query("SELECT * FROM rooms WHERE session_id = $1", [sessionId]);
       if (roomResult.rows.length === 0) return;
+      
+      const muteCheck = await pool.query(`
+        SELECT is_muted FROM room_participants 
+        WHERE room_id = $1 AND user_id = $2
+      `, [roomResult.rows[0].id, decoded.userId]);
+      
+      if (muteCheck.rows.length > 0 && muteCheck.rows[0].is_muted) {
+        socket.emit("message-blocked", { reason: "Вы заглушены администратором" });
+        return;
+      }
 
       // Save message
       const messageResult = await pool.query(
@@ -468,8 +624,62 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("disconnect", () => {
+  socket.on("mute-participant", async (data) => {
+    const { sessionId, targetUserId, isMuted, token } = data;
+    try {
+      // Verify token
+      const decoded = jwt.verify(token, JWT_SECRET);
+      
+      // Get room info
+      const roomResult = await pool.query("SELECT * FROM rooms WHERE session_id = $1", [sessionId]);
+      if (roomResult.rows.length === 0) return;
+      
+      const room = roomResult.rows[0];
+      
+      // Check if user is admin
+      const adminCheck = await pool.query(`
+        SELECT role FROM room_participants 
+        WHERE room_id = $1 AND user_id = $2
+      `, [room.id, decoded.userId]);
+      
+      if (adminCheck.rows.length === 0 || adminCheck.rows[0].role !== 'admin') {
+        socket.emit("error", { message: "Недостаточно прав" });
+        return;
+      }
+      
+      // Update mute status
+      await pool.query(`
+        UPDATE room_participants 
+        SET is_muted = $1
+        WHERE room_id = $2 AND user_id = $3
+      `, [isMuted, room.id, targetUserId]);
+      
+      // Get target user info
+      const userResult = await pool.query("SELECT username FROM users WHERE id = $1", [targetUserId]);
+      const targetUsername = userResult.rows[0]?.username || 'Участник';
+      
+      // Broadcast mute status change
+      io.to(sessionId).emit("participant-muted", {
+        userId: targetUserId,
+        username: targetUsername,
+        isMuted,
+        mutedBy: decoded.username
+      });
+      
+    } catch (err) {
+      console.error("Mute participant error:", err);
+    }
+  });
+
+  socket.on("disconnect", async () => {
     console.log("User disconnected:", socket.id);
+    
+    if (socket.sessionId && socket.userId) {
+      // Broadcast participant left
+      socket.to(socket.sessionId).emit("participant-left", {
+        userId: socket.userId
+      });
+    }
   });
 });
 
