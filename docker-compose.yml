@@ -41,8 +41,8 @@ services:
       - ./server:/app
       - /app/node_modules
     environment:
-      - OPENVIDU_URL=https://openvidu:4443
-      - OPENVIDU_PUBLIC_URL=https://localhost:4443
+      - OPENVIDU_URL=https://openvidu.koktem2.kz/
+      - OPENVIDU_PUBLIC_URL=https://openvidu.koktem2.kz/
       - OPENVIDU_SECRET=MY_SECRET
       - PORT=5005
       - NODE_TLS_REJECT_UNAUTHORIZED=0

@@ -4,7 +4,8 @@ import axios from "axios";
 import io from "socket.io-client";
 import "./styles.css";
 
-const SERVER_URL = "http://localhost:5005";
+// const SERVER_URL = "http://localhost:5005";
+const SERVER_URL = "https://api.meetings.koktem2.kz";
 
 export default function App() {
   const [user, setUser] = useState(null);

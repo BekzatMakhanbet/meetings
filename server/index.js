@@ -12,22 +12,34 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST"]
-  }
+    origin: [
+      "http://localhost:3002",
+      "http://localhost:3000",
+      "https://meetings.koktem2.kz",
+      "https://www.meetings.koktem2.kz",
+      "https://api.meetings.koktem2.kz",
+      "https://www.api.meetings.koktem2.kz",
+      "https://openvidu.koktem2.kz",
+      "https://www.openvidu.koktem2.kz",
+    ],
+    methods: ["GET", "POST"],
+  },
 });
 
 app.use(cors());
 app.use(express.json());
 
-const OPENVIDU_URL = process.env.OPENVIDU_URL || "https://openvidu:4443";
-const OPENVIDU_PUBLIC_URL = process.env.OPENVIDU_PUBLIC_URL || "https://localhost:4443";
+const OPENVIDU_URL = process.env.OPENVIDU_URL || "https://openvidu.koktem2.kz/";
+const OPENVIDU_PUBLIC_URL =
+  process.env.OPENVIDU_PUBLIC_URL || "https://openvidu.koktem2.kz/";
 const OPENVIDU_SECRET = process.env.OPENVIDU_SECRET || "MY_SECRET";
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 
 // PostgreSQL connection with better configuration
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgresql://postgres:password@localhost:5432/meetings",
+  connectionString:
+    process.env.DATABASE_URL ||
+    "postgresql://postgres:password@localhost:5432/meetings",
   ssl: false,
   max: 20,
   idleTimeoutMillis: 30000,
@@ -44,9 +56,11 @@ async function testConnection() {
       client.release();
       return true;
     } catch (err) {
-      console.log(`Database connection failed, retrying... (${retries} attempts left)`);
+      console.log(
+        `Database connection failed, retrying... (${retries} attempts left)`
+      );
       retries--;
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }
   console.error("Failed to connect to database after multiple attempts");
@@ -134,15 +148,17 @@ async function ensureOk(responseOrPromise) {
   const response = await responseOrPromise;
   if (!response.ok) {
     const text = await response.text().catch(() => "<no text>");
-    throw new Error(`OpenVidu error ${response.status} ${response.statusText}: ${text}`);
+    throw new Error(
+      `OpenVidu error ${response.status} ${response.statusText}: ${text}`
+    );
   }
   return response;
 }
 
 // Auth middleware
 function authenticateToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
 
   if (!token) {
     return res.sendStatus(401);
@@ -176,12 +192,17 @@ app.post("/api/register", async (req, res) => {
       [username, email, hashedPassword]
     );
     const user = result.rows[0];
-    const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET);
+    const token = jwt.sign(
+      { userId: user.id, username: user.username },
+      JWT_SECRET
+    );
     res.json({ token, user });
   } catch (err) {
     console.error(err);
-    if (err.code === '23505') {
-      res.status(400).json({ error: "Пользователь с таким email или именем уже существует" });
+    if (err.code === "23505") {
+      res.status(400).json({
+        error: "Пользователь с таким email или именем уже существует",
+      });
     } else {
       res.status(500).json({ error: "Ошибка сервера" });
     }
@@ -191,15 +212,23 @@ app.post("/api/register", async (req, res) => {
 app.post("/api/login", async (req, res) => {
   const { email, password } = req.body;
   try {
-    const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    const result = await pool.query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
     const user = result.rows[0];
-    
-    if (!user || !await bcrypt.compare(password, user.password_hash)) {
+
+    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       return res.status(401).json({ error: "Неверные данные для входа" });
     }
-    
-    const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET);
-    res.json({ token, user: { id: user.id, username: user.username, email: user.email } });
+
+    const token = jwt.sign(
+      { userId: user.id, username: user.username },
+      JWT_SECRET
+    );
+    res.json({
+      token,
+      user: { id: user.id, username: user.username, email: user.email },
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Ошибка сервера" });
@@ -209,13 +238,16 @@ app.post("/api/login", async (req, res) => {
 // Get current user info
 app.get("/api/me", authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query("SELECT id, username, email FROM users WHERE id = $1", [req.user.userId]);
+    const result = await pool.query(
+      "SELECT id, username, email FROM users WHERE id = $1",
+      [req.user.userId]
+    );
     const user = result.rows[0];
-    
+
     if (!user) {
       return res.status(404).json({ error: "Пользователь не найден" });
     }
-    
+
     res.json(user);
   } catch (err) {
     console.error(err);
@@ -260,7 +292,10 @@ app.post("/api/session", authenticateToken, async (req, res) => {
   const { sessionId } = req.body;
   try {
     // Check if room exists
-    const roomResult = await pool.query("SELECT * FROM rooms WHERE session_id = $1", [sessionId]);
+    const roomResult = await pool.query(
+      "SELECT * FROM rooms WHERE session_id = $1",
+      [sessionId]
+    );
     if (roomResult.rows.length === 0) {
       return res.status(404).json({ error: "Комната не найдена" });
     }
@@ -282,23 +317,25 @@ app.post("/api/session", authenticateToken, async (req, res) => {
           Authorization: ovAuthHeader(),
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           session: sessionId,
-          data: JSON.stringify({ username: req.user.username })
+          data: JSON.stringify({ username: req.user.username }),
         }),
       })
     );
     const tokenJson = await tokenResp.json();
-    
+
     // Return token with public OpenVidu URL for client connection
-    return res.json({ 
-      token: tokenJson.token, 
+    return res.json({
+      token: tokenJson.token,
       room: roomResult.rows[0],
-      openviduUrl: OPENVIDU_PUBLIC_URL
+      openviduUrl: OPENVIDU_PUBLIC_URL,
     });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Ошибка сервера", details: String(err.message || err) });
+    return res
+      .status(500)
+      .json({ error: "Ошибка сервера", details: String(err.message || err) });
   }
 });
 
@@ -306,38 +343,50 @@ app.post("/api/session", authenticateToken, async (req, res) => {
 app.post("/api/recordings/start", authenticateToken, async (req, res) => {
   const { session } = req.body;
   try {
-    const roomResult = await pool.query("SELECT * FROM rooms WHERE session_id = $1", [session]);
+    const roomResult = await pool.query(
+      "SELECT * FROM rooms WHERE session_id = $1",
+      [session]
+    );
     if (roomResult.rows.length === 0) {
       return res.status(404).json({ error: "Комната не найдена" });
     }
 
     // Check if session exists and has connections
     try {
-      const sessionInfo = await fetch(`${OPENVIDU_URL}/openvidu/api/sessions/${session}`, {
-        method: "GET",
-        headers: { Authorization: ovAuthHeader() },
-      });
-      
+      const sessionInfo = await fetch(
+        `${OPENVIDU_URL}/openvidu/api/sessions/${session}`,
+        {
+          method: "GET",
+          headers: { Authorization: ovAuthHeader() },
+        }
+      );
+
       if (!sessionInfo.ok) {
-        return res.status(400).json({ error: "Сессия не активна или не существует" });
+        return res
+          .status(400)
+          .json({ error: "Сессия не активна или не существует" });
       }
 
       const sessionData = await sessionInfo.json();
       if (!sessionData.connections || sessionData.connections.length === 0) {
-        return res.status(400).json({ error: "В сессии нет активных участников" });
+        return res
+          .status(400)
+          .json({ error: "В сессии нет активных участников" });
       }
     } catch (err) {
-      return res.status(400).json({ error: "Не удается проверить состояние сессии" });
+      return res
+        .status(400)
+        .json({ error: "Не удается проверить состояние сессии" });
     }
 
-    const recordingPayload = { 
-      session, 
+    const recordingPayload = {
+      session,
       outputMode: "COMPOSED",
       hasAudio: true,
       hasVideo: true,
       resolution: "1920x1080",
       frameRate: 25,
-      recordingLayout: "BEST_FIT"
+      recordingLayout: "BEST_FIT",
     };
 
     console.log("Starting recording with payload:", recordingPayload);
@@ -353,22 +402,22 @@ app.post("/api/recordings/start", authenticateToken, async (req, res) => {
       })
     );
     const json = await r.json();
-    
+
     console.log("Recording started:", json);
-    
+
     // Save recording info to database
     await pool.query(
       "INSERT INTO recordings (room_id, recording_id) VALUES ($1, $2)",
       [roomResult.rows[0].id, json.id]
     );
-    
+
     return res.json(json);
   } catch (err) {
     console.error("Recording start error:", err);
-    res.status(500).json({ 
-      error: "Не удалось начать запись", 
+    res.status(500).json({
+      error: "Не удалось начать запись",
       details: String(err.message || err),
-      suggestion: "Убедитесь, что в комнате есть активные участники"
+      suggestion: "Убедитесь, что в комнате есть активные участники",
     });
   }
 });
@@ -380,31 +429,31 @@ app.post("/api/recordings/stop", authenticateToken, async (req, res) => {
     console.log("Stopping recording:", recordingId);
 
     const r = await ensureOk(
-      fetch(
-        `${OPENVIDU_URL}/openvidu/api/recordings/stop/${recordingId}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: ovAuthHeader(),
-            "Content-Type": "application/json",
-          },
-        }
-      )
+      fetch(`${OPENVIDU_URL}/openvidu/api/recordings/stop/${recordingId}`, {
+        method: "POST",
+        headers: {
+          Authorization: ovAuthHeader(),
+          "Content-Type": "application/json",
+        },
+      })
     );
     const json = await r.json();
-    
+
     console.log("Recording stopped:", json);
-    
+
     // Update recording info in database
     await pool.query(
       "UPDATE recordings SET status = 'completed', duration = $1, file_path = $2 WHERE recording_id = $3",
       [json.duration, json.url, recordingId]
     );
-    
+
     return res.json(json);
   } catch (err) {
     console.error("Recording stop error:", err);
-    res.status(500).json({ error: "Не удалось остановить запись", details: String(err.message || err) });
+    res.status(500).json({
+      error: "Не удалось остановить запись",
+      details: String(err.message || err),
+    });
   }
 });
 
@@ -420,15 +469,22 @@ app.get("/api/recordings", authenticateToken, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Ошибка получения записей", details: String(err.message || err) });
+    res.status(500).json({
+      error: "Ошибка получения записей",
+      details: String(err.message || err),
+    });
   }
 });
 
 // Chat messages
-app.get("/api/rooms/:sessionId/messages", authenticateToken, async (req, res) => {
-  const { sessionId } = req.params;
-  try {
-    const result = await pool.query(`
+app.get(
+  "/api/rooms/:sessionId/messages",
+  authenticateToken,
+  async (req, res) => {
+    const { sessionId } = req.params;
+    try {
+      const result = await pool.query(
+        `
       SELECT m.*, u.username 
       FROM messages m
       JOIN rooms r ON m.room_id = r.id
@@ -436,58 +492,74 @@ app.get("/api/rooms/:sessionId/messages", authenticateToken, async (req, res) =>
       WHERE r.session_id = $1
       ORDER BY m.created_at ASC
       LIMIT 100
-    `, [sessionId]);
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Ошибка получения сообщений" });
+    `,
+        [sessionId]
+      );
+      res.json(result.rows);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Ошибка получения сообщений" });
+    }
   }
-});
+);
 
 // Get room participants
-app.get("/api/rooms/:sessionId/participants", authenticateToken, async (req, res) => {
-  const { sessionId } = req.params;
-  try {
-    const result = await pool.query(`
+app.get(
+  "/api/rooms/:sessionId/participants",
+  authenticateToken,
+  async (req, res) => {
+    const { sessionId } = req.params;
+    try {
+      const result = await pool.query(
+        `
       SELECT rp.*, u.username, u.email, r.name as room_name, r.created_by as room_creator_id
       FROM room_participants rp
       JOIN rooms r ON rp.room_id = r.id
       JOIN users u ON rp.user_id = u.id
       WHERE r.session_id = $1
       ORDER BY rp.joined_at ASC
-    `, [sessionId]);
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Ошибка получения участников" });
+    `,
+        [sessionId]
+      );
+      res.json(result.rows);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Ошибка получения участников" });
+    }
   }
-});
+);
 
 // Join room as participant
 app.post("/api/rooms/:sessionId/join", authenticateToken, async (req, res) => {
   const { sessionId } = req.params;
   const userId = req.user.userId;
-  
+
   try {
     // Get room info
-    const roomResult = await pool.query("SELECT * FROM rooms WHERE session_id = $1", [sessionId]);
+    const roomResult = await pool.query(
+      "SELECT * FROM rooms WHERE session_id = $1",
+      [sessionId]
+    );
     if (roomResult.rows.length === 0) {
       return res.status(404).json({ error: "Комната не найдена" });
     }
-    
+
     const room = roomResult.rows[0];
-    
+
     // Determine role: admin if creator, participant otherwise
-    const role = room.created_by === userId ? 'admin' : 'participant';
-    
+    const role = room.created_by === userId ? "admin" : "participant";
+
     // Add/update participant
-    await pool.query(`
+    await pool.query(
+      `
       INSERT INTO room_participants (room_id, user_id, role, is_muted)
       VALUES ($1, $2, $3, false)
       ON CONFLICT (room_id, user_id) 
       DO UPDATE SET joined_at = CURRENT_TIMESTAMP
-    `, [room.id, userId, role]);
-    
+    `,
+      [room.id, userId, role]
+    );
+
     res.json({ success: true, role });
   } catch (err) {
     console.error(err);
@@ -500,33 +572,42 @@ app.post("/api/rooms/:sessionId/mute", authenticateToken, async (req, res) => {
   const { sessionId } = req.params;
   const { targetUserId, isMuted } = req.body;
   const adminUserId = req.user.userId;
-  
+
   try {
     // Get room info
-    const roomResult = await pool.query("SELECT * FROM rooms WHERE session_id = $1", [sessionId]);
+    const roomResult = await pool.query(
+      "SELECT * FROM rooms WHERE session_id = $1",
+      [sessionId]
+    );
     if (roomResult.rows.length === 0) {
       return res.status(404).json({ error: "Комната не найдена" });
     }
-    
+
     const room = roomResult.rows[0];
-    
+
     // Check if user is admin
-    const adminCheck = await pool.query(`
+    const adminCheck = await pool.query(
+      `
       SELECT role FROM room_participants 
       WHERE room_id = $1 AND user_id = $2
-    `, [room.id, adminUserId]);
-    
-    if (adminCheck.rows.length === 0 || adminCheck.rows[0].role !== 'admin') {
+    `,
+      [room.id, adminUserId]
+    );
+
+    if (adminCheck.rows.length === 0 || adminCheck.rows[0].role !== "admin") {
       return res.status(403).json({ error: "Недостаточно прав" });
     }
-    
+
     // Update mute status
-    await pool.query(`
+    await pool.query(
+      `
       UPDATE room_participants 
       SET is_muted = $1
       WHERE room_id = $2 AND user_id = $3
-    `, [isMuted, room.id, targetUserId]);
-    
+    `,
+      [isMuted, room.id, targetUserId]
+    );
+
     res.json({ success: true });
   } catch (err) {
     console.error(err);
@@ -543,44 +624,55 @@ io.on("connection", (socket) => {
     try {
       // Verify token
       const decoded = jwt.verify(token, JWT_SECRET);
-      
+
       socket.join(sessionId);
       socket.userId = decoded.userId;
       socket.sessionId = sessionId;
-      
-      console.log(`User ${decoded.username} (${socket.id}) joined room ${sessionId}`);
-      
+
+      console.log(
+        `User ${decoded.username} (${socket.id}) joined room ${sessionId}`
+      );
+
       // Add user to participants if not already added
-      const roomResult = await pool.query("SELECT * FROM rooms WHERE session_id = $1", [sessionId]);
+      const roomResult = await pool.query(
+        "SELECT * FROM rooms WHERE session_id = $1",
+        [sessionId]
+      );
       if (roomResult.rows.length > 0) {
         const room = roomResult.rows[0];
-        const role = room.created_by === decoded.userId ? 'admin' : 'participant';
-        
-        await pool.query(`
+        const role =
+          room.created_by === decoded.userId ? "admin" : "participant";
+
+        await pool.query(
+          `
           INSERT INTO room_participants (room_id, user_id, role, is_muted)
           VALUES ($1, $2, $3, false)
           ON CONFLICT (room_id, user_id) 
           DO UPDATE SET joined_at = CURRENT_TIMESTAMP
-        `, [room.id, decoded.userId, role]);
+        `,
+          [room.id, decoded.userId, role]
+        );
       }
-      
+
       // Broadcast participant joined
       socket.to(sessionId).emit("participant-joined", {
         userId: decoded.userId,
-        username: decoded.username
+        username: decoded.username,
       });
-      
+
       // Send current participants list to the newly joined user
-      const participantsResult = await pool.query(`
+      const participantsResult = await pool.query(
+        `
         SELECT rp.*, u.username, u.email
         FROM room_participants rp
         JOIN rooms r ON rp.room_id = r.id
         JOIN users u ON rp.user_id = u.id
         WHERE r.session_id = $1
-      `, [sessionId]);
-      
+      `,
+        [sessionId]
+      );
+
       socket.emit("participants-list", participantsResult.rows);
-      
     } catch (err) {
       console.error("Join room error:", err);
     }
@@ -591,18 +683,26 @@ io.on("connection", (socket) => {
     try {
       // Verify token
       const decoded = jwt.verify(token, JWT_SECRET);
-      
+
       // Check if user is muted
-      const roomResult = await pool.query("SELECT * FROM rooms WHERE session_id = $1", [sessionId]);
+      const roomResult = await pool.query(
+        "SELECT * FROM rooms WHERE session_id = $1",
+        [sessionId]
+      );
       if (roomResult.rows.length === 0) return;
-      
-      const muteCheck = await pool.query(`
+
+      const muteCheck = await pool.query(
+        `
         SELECT is_muted FROM room_participants 
         WHERE room_id = $1 AND user_id = $2
-      `, [roomResult.rows[0].id, decoded.userId]);
-      
+      `,
+        [roomResult.rows[0].id, decoded.userId]
+      );
+
       if (muteCheck.rows.length > 0 && muteCheck.rows[0].is_muted) {
-        socket.emit("message-blocked", { reason: "Вы заглушены администратором" });
+        socket.emit("message-blocked", {
+          reason: "Вы заглушены администратором",
+        });
         return;
       }
 
@@ -614,7 +714,7 @@ io.on("connection", (socket) => {
 
       const messageData = {
         ...messageResult.rows[0],
-        username: decoded.username
+        username: decoded.username,
       };
 
       // Broadcast to room
@@ -629,43 +729,54 @@ io.on("connection", (socket) => {
     try {
       // Verify token
       const decoded = jwt.verify(token, JWT_SECRET);
-      
+
       // Get room info
-      const roomResult = await pool.query("SELECT * FROM rooms WHERE session_id = $1", [sessionId]);
+      const roomResult = await pool.query(
+        "SELECT * FROM rooms WHERE session_id = $1",
+        [sessionId]
+      );
       if (roomResult.rows.length === 0) return;
-      
+
       const room = roomResult.rows[0];
-      
+
       // Check if user is admin
-      const adminCheck = await pool.query(`
+      const adminCheck = await pool.query(
+        `
         SELECT role FROM room_participants 
         WHERE room_id = $1 AND user_id = $2
-      `, [room.id, decoded.userId]);
-      
-      if (adminCheck.rows.length === 0 || adminCheck.rows[0].role !== 'admin') {
+      `,
+        [room.id, decoded.userId]
+      );
+
+      if (adminCheck.rows.length === 0 || adminCheck.rows[0].role !== "admin") {
         socket.emit("error", { message: "Недостаточно прав" });
         return;
       }
-      
+
       // Update mute status
-      await pool.query(`
+      await pool.query(
+        `
         UPDATE room_participants 
         SET is_muted = $1
         WHERE room_id = $2 AND user_id = $3
-      `, [isMuted, room.id, targetUserId]);
-      
+      `,
+        [isMuted, room.id, targetUserId]
+      );
+
       // Get target user info
-      const userResult = await pool.query("SELECT username FROM users WHERE id = $1", [targetUserId]);
-      const targetUsername = userResult.rows[0]?.username || 'Участник';
-      
+      const userResult = await pool.query(
+        "SELECT username FROM users WHERE id = $1",
+        [targetUserId]
+      );
+      const targetUsername = userResult.rows[0]?.username || "Участник";
+
       // Broadcast mute status change
       io.to(sessionId).emit("participant-muted", {
         userId: targetUserId,
         username: targetUsername,
         isMuted,
-        mutedBy: decoded.username
+        mutedBy: decoded.username,
       });
-      
     } catch (err) {
       console.error("Mute participant error:", err);
     }
@@ -673,11 +784,11 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", async () => {
     console.log("User disconnected:", socket.id);
-    
+
     if (socket.sessionId && socket.userId) {
       // Broadcast participant left
       socket.to(socket.sessionId).emit("participant-left", {
-        userId: socket.userId
+        userId: socket.userId,
       });
     }
   });
@@ -701,9 +812,11 @@ async function testOpenViduConnection() {
       console.log(`OpenVidu responded with status: ${response.status}`);
       return true;
     } catch (err) {
-      console.log(`OpenVidu connection failed, retrying... (${retries} attempts left)`);
+      console.log(
+        `OpenVidu connection failed, retrying... (${retries} attempts left)`
+      );
       retries--;
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, 3000));
     }
   }
   console.error("Failed to connect to OpenVidu after multiple attempts");
@@ -717,13 +830,13 @@ async function startServer() {
     console.error("Failed to initialize database, exiting...");
     process.exit(1);
   }
-  
+
   const openviduReady = await testOpenViduConnection();
   if (!openviduReady) {
     console.error("Failed to connect to OpenVidu, exiting...");
     process.exit(1);
   }
-  
+
   server.listen(PORT, () => {
     console.log(`Backend running on ${PORT}`);
   });
