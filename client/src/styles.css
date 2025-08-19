@@ -188,9 +188,36 @@ body {
   border-bottom: 1px solid #4a5568;
 }
 
+.meeting-title {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .meeting-header h3 {
   margin: 0;
   color: white;
+}
+
+.recording-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #dc2626;
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  animation: pulse 2s infinite;
+}
+
+.recording-dot {
+  width: 8px;
+  height: 8px;
+  background: white;
+  border-radius: 50%;
+  animation: blink 1s infinite;
 }
 
 .meeting-controls {
@@ -250,6 +277,18 @@ body {
   }
   50% {
     opacity: 0.7;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes blink {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
   }
   100% {
     opacity: 1;

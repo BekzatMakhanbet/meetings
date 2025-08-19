@@ -4,7 +4,7 @@ import axios from "axios";
 import io from "socket.io-client";
 import "./styles.css";
 
-const SERVER_URL = "http://localhost:5000";
+const SERVER_URL = "http://localhost:5005";
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -268,6 +268,11 @@ function VideoMeeting({ room, token, user, onLeave, onAuthError }) {
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
   
+  // Local recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [recordedChunks, setRecordedChunks] = useState([]);
+  
   const localVideoRef = useRef(null);
   const chatRef = useRef(null);
 
@@ -317,6 +322,24 @@ function VideoMeeting({ room, token, user, onLeave, onAuthError }) {
         sessionId: room.session_id,
       });
       const sessionToken = data.token;
+      const openviduUrl = data.openviduUrl;
+      
+      console.log('Backend response data:', data);
+      console.log('OpenVidu URL from backend:', openviduUrl);
+      console.log('Session token:', sessionToken);
+      
+      // Configure OpenVidu with the correct server URL
+      console.log('Configuring OpenVidu with serverUrl:', openviduUrl);
+      
+      // Create new OpenVidu instance
+      OV.current = new OpenVidu();
+      OV.current.setAdvancedConfiguration({
+        serverUrl: openviduUrl,
+        forceMediaReconnectionAfterNetworkDrop: true
+      });
+      
+      console.log('OpenVidu configured successfully');
+      
       const session = OV.current.initSession();
       sessionRef.current = session;
 
@@ -370,6 +393,11 @@ function VideoMeeting({ room, token, user, onLeave, onAuthError }) {
   };
 
   const leave = () => {
+    // Stop recording if active
+    if (isRecording) {
+      stopLocalRecording();
+    }
+    
     if (sessionRef.current) sessionRef.current.disconnect();
     setSubscribers([]);
     setJoined(false);
@@ -499,10 +527,211 @@ function VideoMeeting({ room, token, user, onLeave, onAuthError }) {
     setNewMessage('');
   };
 
+  // Local recording functions
+  const startLocalRecording = async () => {
+    try {
+      console.log('Начинаем локальную запись...');
+      
+      // Get screen capture
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          mediaSource: 'screen',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: true
+      });
+
+      // Get microphone audio to mix with system audio
+      let micStream = null;
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 44100
+          }
+        });
+      } catch (err) {
+        console.log('Микрофон недоступен, запись только системного звука');
+      }
+
+      // Create audio context for mixing audio streams
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const destination = audioContext.createMediaStreamDestination();
+
+      // Add screen audio if available
+      const screenAudioTracks = screenStream.getAudioTracks();
+      if (screenAudioTracks.length > 0) {
+        const screenAudioSource = audioContext.createMediaStreamSource(
+          new MediaStream(screenAudioTracks)
+        );
+        screenAudioSource.connect(destination);
+        console.log('Добавлен системный звук');
+      }
+
+      // Add microphone audio if available
+      if (micStream) {
+        const micAudioSource = audioContext.createMediaStreamSource(micStream);
+        micAudioSource.connect(destination);
+        console.log('Добавлен звук микрофона');
+      }
+
+      // Add OpenVidu audio streams if available
+      if (publisherRef.current && publisherRef.current.stream) {
+        try {
+          const publisherStream = publisherRef.current.stream.getMediaStream();
+          const publisherAudioTracks = publisherStream.getAudioTracks();
+          if (publisherAudioTracks.length > 0) {
+            const publisherAudioSource = audioContext.createMediaStreamSource(
+              new MediaStream(publisherAudioTracks)
+            );
+            publisherAudioSource.connect(destination);
+            console.log('Добавлен звук от вашего микрофона через OpenVidu');
+          }
+        } catch (err) {
+          console.log('Не удалось добавить аудио от publisher:', err);
+        }
+      }
+
+      // Add subscribers audio streams
+      subscribers.forEach((subscriber, index) => {
+        try {
+          if (subscriber.stream) {
+            const subscriberStream = subscriber.stream.getMediaStream();
+            const subscriberAudioTracks = subscriberStream.getAudioTracks();
+            if (subscriberAudioTracks.length > 0) {
+              const subscriberAudioSource = audioContext.createMediaStreamSource(
+                new MediaStream(subscriberAudioTracks)
+              );
+              subscriberAudioSource.connect(destination);
+              console.log(`Добавлен звук от участника ${index + 1}`);
+            }
+          }
+        } catch (err) {
+          console.log(`Не удалось добавить аудио от участника ${index + 1}:`, err);
+        }
+      });
+
+      // Combine video from screen with mixed audio
+      const combinedStream = new MediaStream([
+        ...screenStream.getVideoTracks(),
+        ...destination.stream.getAudioTracks()
+      ]);
+
+      // Check if browser supports the codec
+      let mimeType = 'video/webm;codecs=vp9,opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm;codecs=vp8,opus';
+      }
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm';
+      }
+
+      const recorder = new MediaRecorder(combinedStream, { mimeType });
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          setRecordedChunks(prev => [...prev, event.data]);
+        }
+      };
+
+      recorder.onstop = () => {
+        downloadRecording();
+        setIsRecording(false);
+        setMediaRecorder(null);
+      };
+
+      // Store references for cleanup
+      recorder.audioContext = audioContext;
+      recorder.screenStream = screenStream;
+      recorder.micStream = micStream;
+
+      // Handle when user stops screen sharing manually
+      screenStream.getVideoTracks()[0].addEventListener('ended', () => {
+        console.log('Запись остановлена пользователем');
+        if (recorder.state === 'recording') {
+          recorder.stop();
+        }
+      });
+
+      recorder.start(1000); // Record in 1-second chunks
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+      
+      // Show success message with instructions
+      alert(`✅ Запись началась успешно!\n\n📹 Видео: записывается выбранная область экрана\n🎵 Звук: записывается микс из всех источников\n\n💡 Для лучшего качества звука:\n• Выберите "Поделиться звуком" в диалоге\n• Убедитесь что звук встречи включен\n• Проговорите тестовую фразу`);
+      
+      console.log('Запись началась с многоканальным аудио');
+    } catch (error) {
+      console.error('Ошибка при начале записи:', error);
+      alert('❌ Не удалось начать запись.\n\nВозможные решения:\n• Разрешите доступ к экрану\n• Выберите "Поделиться звуком"\n• Попробуйте обновить страницу');
+    }
+  };
+
+  const stopLocalRecording = () => {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      
+      // Clean up resources
+      if (mediaRecorder.audioContext) {
+        mediaRecorder.audioContext.close();
+      }
+      
+      if (mediaRecorder.screenStream) {
+        mediaRecorder.screenStream.getTracks().forEach(track => track.stop());
+      }
+      
+      if (mediaRecorder.micStream) {
+        mediaRecorder.micStream.getTracks().forEach(track => track.stop());
+      }
+      
+      setIsRecording(false);
+      setMediaRecorder(null);
+      console.log('Запись остановлена и ресурсы освобождены');
+    }
+  };
+
+  const downloadRecording = () => {
+    if (recordedChunks.length === 0) {
+      console.log('Нет данных для скачивания');
+      return;
+    }
+
+    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    
+    // Create a readable filename
+    const now = new Date();
+    const date = now.toLocaleDateString('ru-RU').replace(/\./g, '-');
+    const time = now.toLocaleTimeString('ru-RU', { hour12: false }).replace(/:/g, '-');
+    const roomName = room.name.replace(/[^a-zA-Z0-9а-яё\s]/gi, '').replace(/\s+/g, '_');
+    
+    a.href = url;
+    a.download = `Встреча_${roomName}_${date}_${time}.webm`;
+    a.click();
+    
+    URL.revokeObjectURL(url);
+    setRecordedChunks([]);
+    
+    // Show success message
+    alert(`🎬 Запись сохранена!\n\n📁 Файл: Встреча_${roomName}_${date}_${time}.webm\n📂 Папка: Загрузки\n\n💡 Совет: Проверьте качество звука перед следующей записью`);
+    console.log('Запись успешно сохранена с аудио');
+  };
+
   return (
     <div className="meeting-container">
       <div className="meeting-header">
-        <h3>{room.name}</h3>
+        <div className="meeting-title">
+          <h3>{room.name}</h3>
+          {isRecording && (
+            <div className="recording-indicator">
+              <span className="recording-dot"></span>
+              ЗАПИСЬ
+            </div>
+          )}
+        </div>
         <div className="meeting-controls">
           <button 
             className={`control-btn ${isCameraOn ? 'active' : 'inactive'}`} 
@@ -522,12 +751,12 @@ function VideoMeeting({ room, token, user, onLeave, onAuthError }) {
           >
             {isSharingScreen ? '🖥️ Остановить показ' : '🖥️ Показать экран'}
           </button>
-          {!recordingId ? (
-            <button className="control-btn record" onClick={startRecording}>
+          {!isRecording ? (
+            <button className="control-btn record" onClick={startLocalRecording}>
               ⏺️ Начать запись
             </button>
           ) : (
-            <button className="control-btn record active" onClick={stopRecording}>
+            <button className="control-btn record active" onClick={stopLocalRecording}>
               ⏹️ Остановить запись
             </button>
           )}

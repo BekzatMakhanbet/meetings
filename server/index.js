@@ -21,6 +21,7 @@ app.use(cors());
 app.use(express.json());
 
 const OPENVIDU_URL = process.env.OPENVIDU_URL || "https://openvidu:4443";
+const OPENVIDU_PUBLIC_URL = process.env.OPENVIDU_PUBLIC_URL || "https://localhost:4443";
 const OPENVIDU_SECRET = process.env.OPENVIDU_SECRET || "MY_SECRET";
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 
@@ -275,7 +276,13 @@ app.post("/api/session", authenticateToken, async (req, res) => {
       })
     );
     const tokenJson = await tokenResp.json();
-    return res.json({ token: tokenJson.token, room: roomResult.rows[0] });
+    
+    // Return token with public OpenVidu URL for client connection
+    return res.json({ 
+      token: tokenJson.token, 
+      room: roomResult.rows[0],
+      openviduUrl: OPENVIDU_PUBLIC_URL
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Ошибка сервера", details: String(err.message || err) });
@@ -466,13 +473,44 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5005;
 
-// Start server only after database is ready
+// Test OpenVidu connection
+async function testOpenViduConnection() {
+  let retries = 10;
+  while (retries > 0) {
+    try {
+      const response = await fetch(`${OPENVIDU_URL}/openvidu/api/status`, {
+        method: "GET",
+        headers: { Authorization: ovAuthHeader() },
+      });
+      if (response.status === 401) {
+        console.log("OpenVidu is ready and responding");
+        return true;
+      }
+      console.log(`OpenVidu responded with status: ${response.status}`);
+      return true;
+    } catch (err) {
+      console.log(`OpenVidu connection failed, retrying... (${retries} attempts left)`);
+      retries--;
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+  }
+  console.error("Failed to connect to OpenVidu after multiple attempts");
+  return false;
+}
+
+// Start server only after database and OpenVidu are ready
 async function startServer() {
   const dbReady = await initDatabase();
   if (!dbReady) {
     console.error("Failed to initialize database, exiting...");
+    process.exit(1);
+  }
+  
+  const openviduReady = await testOpenViduConnection();
+  if (!openviduReady) {
+    console.error("Failed to connect to OpenVidu, exiting...");
     process.exit(1);
   }
   

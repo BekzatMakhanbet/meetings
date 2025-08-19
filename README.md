@@ -24,7 +24,7 @@
 
 ### Требования
 - Docker и Docker Compose
-- Свободные порты: 3000, 4443, 5000, 5432
+- Свободные порты: 3000, 4443, 5005, 5432
 
 ### Запуск
 ```bash
@@ -42,7 +42,7 @@ cd ../server && npm install
 ### Доступ к приложению
 - **Приложение**: http://localhost:3000
 - **OpenVidu**: https://localhost:4443
-- **API**: http://localhost:5000
+- **API**: http://localhost:5005
 - **PostgreSQL**: localhost:5432
 
 ## Использование
@@ -102,7 +102,7 @@ OPENVIDU_SECRET=MY_SECRET
 OPENVIDU_PUBLICURL=https://localhost:4443
 
 # API
-PORT=5000
+PORT=5005
 DATABASE_URL=postgresql://postgres:password@postgres:5432/meetings
 ```
 

@@ -9,7 +9,7 @@ services:
       - POSTGRES_PASSWORD=password
       - POSTGRES_HOST_AUTH_METHOD=trust
     ports:
-      - "5432:5432"
+      - "5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -20,12 +20,9 @@ services:
     environment:
       - OPENVIDU_SECRET=MY_SECRET
       - OPENVIDU_PUBLICURL=https://localhost:4443
-      - OPENVIDU_RECORDING=true
-      - OPENVIDU_RECORDING_PATH=/opt/openvidu/recordings
-      - OPENVIDU_RECORDING_PUBLIC_ACCESS=true
-      - OPENVIDU_RECORDING_NOTIFICATION=publisher_and_moderator
-      - OPENVIDU_RECORDING_AUTOSTOP_TIMEOUT=120
-      - OPENVIDU_RECORDING_COMPOSED_URL=""
+      - OPENVIDU_HTTPS_PORT=4443
+      - OPENVIDU_CERTIFICATE_TYPE=selfsigned
+      - OPENVIDU_RECORDING=false
       - OPENVIDU_STREAMS_VIDEO_MAX_RECV_BANDWIDTH=1000
       - OPENVIDU_STREAMS_VIDEO_MIN_RECV_BANDWIDTH=300
       - OPENVIDU_STREAMS_VIDEO_MAX_SEND_BANDWIDTH=1000
@@ -34,6 +31,7 @@ services:
       - "4443:4443"
     volumes:
       - ./recordings:/opt/openvidu/recordings
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
   backend:
@@ -41,14 +39,16 @@ services:
     working_dir: /app
     volumes:
       - ./server:/app
+      - /app/node_modules
     environment:
       - OPENVIDU_URL=https://openvidu:4443
+      - OPENVIDU_PUBLIC_URL=https://localhost:4443
       - OPENVIDU_SECRET=MY_SECRET
-      - PORT=5000
+      - PORT=5005
       - NODE_TLS_REJECT_UNAUTHORIZED=0
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/meetings
     ports:
-      - "5000:5000"
+      - "5005:5005"
     depends_on:
       - openvidu
       - postgres
@@ -60,7 +60,7 @@ services:
   #   volumes:
   #     - ./client:/app
   #   environment:
-  #     - REACT_APP_SERVER_URL=http://localhost:5000
+  #     - REACT_APP_SERVER_URL=http://localhost:5005
   #   ports:
   #     - "3000:3000"
   #   depends_on:
